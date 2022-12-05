@@ -1,0 +1,8 @@
+#!/bin/bash
+
+cargo build --release && \
+perf record -F 999 --call-graph=dwarf -- ./target/release/advent21 --atleast 4 $@ && \
+perf script | ~/.local/opt/FlameGraph/stackcollapse-perf.pl | ~/.local/opt/FlameGraph/flamegraph.pl > flame.svg
+
+echo flame.svg
+
