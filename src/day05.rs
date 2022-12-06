@@ -1,6 +1,7 @@
 const DAY: i32 = 5;
 
 
+#[allow(dead_code)]
 fn show_stacks(stacks: &Vec<Vec<u8>>) {
     for stack in stacks {
         println!("{}", String::from_utf8_lossy(stack));

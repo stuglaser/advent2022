@@ -2,9 +2,9 @@ const DAY: i32 = 6;
 
 fn first_unique(input: &[u8], len: usize) -> i32 {
     let mut active = vec![0u8; 26];
-    let mut part1: i32 = -1;
     let mut active_entries = 0;
     for i in 0..input.len() {
+        // Tracks input[i]
         let b = input[i] - b'a';
         if active[b as usize] == 0 {
             active_entries += 1;
@@ -12,6 +12,7 @@ fn first_unique(input: &[u8], len: usize) -> i32 {
         active[b as usize] += 1;
 
         if i >= len {
+            // Untracks input[i - len]
             let a = input[i - len] - b'a';
             if active[a as usize] == 1 {
                 active_entries -= 1;
