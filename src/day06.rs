@@ -11,18 +11,18 @@ fn first_unique(input: &[u8], len: usize) -> i32 {
         }
         active[b as usize] += 1;
 
-        if i >= len {
-            // Untracks input[i - len]
-            let a = input[i - len] - b'a';
-            if active[a as usize] == 1 {
-                active_entries -= 1;
-            }
-            active[a as usize] -= 1;
-
+        if i >= len - 1 {
             // Check
             if active_entries == len {
                 return i as i32 + 1;
             }
+
+            // Untracks input[1 + i - len]
+            let a = input[1 + i - len] - b'a';
+            if active[a as usize] == 1 {
+                active_entries -= 1;
+            }
+            active[a as usize] -= 1;
         }
     }
     -1
