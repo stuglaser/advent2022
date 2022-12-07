@@ -24,7 +24,7 @@ mod day03;
 mod day04;
 mod day05;
 mod day06;
-// mod day07;
+mod day07;
 // mod day08;
 // mod day09;
 // mod day10;
@@ -50,7 +50,7 @@ static DAYS: &'static [fn(bool, bool)] = &[
     day04::day04,
     day05::day05,
     day06::day06,
-    // day07::day07,
+    day07::day07,
     // day08::day08,
     // day09::day09,
     // day10::day10,
