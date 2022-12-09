@@ -248,3 +248,16 @@ impl<A: Ord, B, C> Ord for ByFirstRev<(A, B, C)> {
     }
 }
 
+pub trait BorrowPairMut {
+    type Item;
+    fn borrow_pair_mut(&mut self, idx1: usize, idx2: usize) -> (&mut Self::Item, &mut Self::Item);
+}
+
+impl<T> BorrowPairMut for Vec<T> {
+    type Item = T;
+
+    fn borrow_pair_mut(&mut self, idx1: usize, idx2: usize) -> (&mut Self::Item, &mut Self::Item) {
+        let (part1, part2) = self.split_at_mut(idx2);
+        (part1.get_mut(idx1).unwrap(), part2.first_mut().unwrap())
+    }
+}

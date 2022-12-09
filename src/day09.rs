@@ -1,6 +1,6 @@
 use rustc_hash::FxHashSet;
 
-use crate::utils::Pt;
+use crate::utils::{Pt, BorrowPairMut};
 
 const DAY: i32 = 9;
 
@@ -11,15 +11,11 @@ enum Dir {
     D,
 }
 
-fn snap(lead: &Pt, follow: &Pt) -> Pt {
+fn snap(lead: &Pt, follow: &mut Pt) {
     let move_follow = (lead.x - follow.x).abs() > 1 || (lead.y - follow.y).abs() > 1;
     if move_follow {
-        Pt::at(
-            follow.x + (lead.x - follow.x).signum(),
-            follow.y + (lead.y - follow.y).signum(),
-        )
-    } else {
-        follow.clone()
+        follow.x += (lead.x - follow.x).signum();
+        follow.y += (lead.y - follow.y).signum();
     }
 }
 
@@ -60,7 +56,7 @@ pub fn day09(test_mode: bool, print: bool) {
                 Dir::D => head.y -= 1,
             }
 
-            tail = snap(&head, &tail);
+            snap(&head, &mut tail);
 
             tail_been.insert(tail.clone());
         }
@@ -85,7 +81,8 @@ pub fn day09(test_mode: bool, print: bool) {
             }
 
             for i in 0..(rope.len() - 1) {
-                rope[i + 1] = snap(&rope[i], &rope[i + 1]);
+                let (lead, follow) = rope.borrow_pair_mut(i, i + 1);
+                snap(lead, follow);
             }
 
             tail_been.insert(rope.last().unwrap().clone());
