@@ -15,6 +15,17 @@ impl Pt {
     pub fn at(x: i32, y: i32) -> Pt {
         Pt{x, y}
     }
+
+    #[inline]
+    pub fn set(&mut self, x: i32, y: i32) {
+        self.x = x;
+        self.y = y;
+    }
+
+    #[inline]
+    pub fn plus(&self, x: i32, y: i32) -> Pt {
+        Self{x: self.x + x, y: self.y + y}
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
