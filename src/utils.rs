@@ -26,6 +26,16 @@ impl Pt {
     pub fn plus(&self, x: i32, y: i32) -> Pt {
         Self{x: self.x + x, y: self.y + y}
     }
+
+    #[inline]
+    pub fn l1_to(&self, other: &Self) -> i32 {
+        (self.x - other.x).abs() + (self.y - other.y).abs()
+    }
+
+    #[inline]
+    pub fn l1_to_coords(&self, x: i32, y: i32) -> i32 {
+        (self.x - x).abs() + (self.y - y).abs()
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]

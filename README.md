@@ -13,19 +13,22 @@ Took ...
 ```
 
 ```
-Day  1 |      87 µs  (22751 samples)
-Day  2 |      92 µs  (21689 samples)
-Day  3 |      80 µs  (24865 samples)
-Day  4 |      67 µs  (29707 samples)
-Day  5 |      47 µs  (42091 samples)
-Day  6 |       9 µs  (205727 samples)
-Day  7 |     214 µs  (9324 samples)
-Day  8 |     534 µs  (3740 samples)
-Day  9 |     561 µs  (3562 samples)
-Day 10 |       6 µs  (286882 samples)
-Day 11 |   4,130 µs  (485 samples)
-Day 12 |      23 µs  (86472 samples)
-Theoretical total: 5.856534 ms
+Day  1 |      88 µs  (22694 samples)
+Day  2 |      92 µs  (21672 samples)
+Day  3 |      74 µs  (26938 samples)
+Day  4 |      61 µs  (32531 samples)
+Day  5 |      46 µs  (43035 samples)
+Day  6 |       9 µs  (215084 samples)
+Day  7 |     219 µs  (9118 samples)
+Day  8 |     531 µs  (3764 samples)
+Day  9 |     551 µs  (3626 samples)
+Day 10 |       6 µs  (292927 samples)
+Day 11 |   4,370 µs  (458 samples)
+Day 12 |      22 µs  (88346 samples)
+Day 13 |     398 µs  (5022 samples)
+Day 14 |   3,394 µs  (590 samples)
+Day 15 |  40,619 µs  (50 samples)
+Theoretical total: 50.486509 ms
 ```
 
 The rules I follow are roughly:
