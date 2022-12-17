@@ -5,6 +5,22 @@ pub fn abs_diff(a: usize, b: usize) -> usize {
     if a > b { a - b } else { b - a }
 }
 
+pub fn minmax<I>(mut iterable: I) -> Option<(I::Item, I::Item)>
+where
+    I: Sized,
+    I: Iterator,
+    I::Item: Ord,
+    I::Item: Clone,
+{
+
+    let first_item = iterable.next()?;
+    Some(iterable.fold((first_item.clone(), first_item),
+        |pair, item|
+            (if item < pair.0 { item.clone() } else { pair.0 },
+             if item > pair.1 { item } else { pair.1 })
+    ))
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Pt {
     pub x: i32,
