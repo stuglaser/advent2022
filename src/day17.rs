@@ -1,8 +1,8 @@
-use std::{cmp::max, iter::zip};
+use std::cmp::max;
 
 use rustc_hash::FxHashMap;
 
-use crate::utils::{minmax, Grid};
+use crate::utils::Grid;
 
 const DAY: i32 = 17;
 
@@ -30,7 +30,6 @@ fn parse_rock(string: &str) -> Grid<u8> {
     let lines = string.lines().map(|s| s.as_bytes()).collect::<Vec<_>>();
     let width = lines[0].len();
     let height = lines.len();
-    let mut grid = Grid::filled(height, width, 0);
 
     let mut grid_data = Vec::with_capacity(width * height);
     for line in lines.iter().rev() {
@@ -49,21 +48,20 @@ fn extend_rows_to(grid: &mut Grid<u8>, rows: usize, value: u8) {
 }
 
 const COLORS: [char; 6] = ['·', '#', '@', '▒', '◉', '▢'];
+// fn fmt_cave(cave: &Grid<u8>) -> String {
+//     let mut out = String::with_capacity(cave.rows * (cave.cols + 1));
+//     for r in (0..cave.rows).rev() {
+//         for c in 0..cave.cols {
+//             out.push(COLORS[cave[(r, c)] as usize]);
+//         }
+//         out.push('\n');
+//     }
+//     out
+// }
 
-fn fmt_cave(cave: &Grid<u8>) -> String {
-    let mut out = String::with_capacity(cave.rows * (cave.cols + 1));
-    for r in (0..cave.rows).rev() {
-        for c in 0..cave.cols {
-            out.push(COLORS[cave[(r, c)] as usize]);
-        }
-        out.push('\n');
-    }
-    out
-}
-
+#[derive(Clone)]
 struct State {
     cave: Grid<u8>,
-    bottom: usize,
     top: usize,
 }
 
@@ -71,12 +69,10 @@ impl State {
     fn new() -> Self {
         Self {
             cave: Grid::filled(1, 7, 0),
-            bottom: 0,
             top: 0,
         }
     }
 }
-
 
 fn collides(cave: &Grid<u8>, rock: &Grid<u8>, r: i32, c: i32) -> bool {
     if r < 0 || c < 0 || c as usize + rock.cols > cave.cols {
@@ -131,21 +127,42 @@ fn drop_rocks<'a, RockIt, BlowIt>(
             if drop_r >= 0 && collides(&state.cave, &rock, drop_r - 1, drop_c) {
                 // Places the rock
                 // blit(&mut state.cave, &rock, drop_r as usize, drop_c as usize, 1);
-                blit(&mut state.cave, &rock, drop_r as usize, drop_c as usize, (i % (COLORS.len() - 1) + 1) as u8);
+                blit(
+                    &mut state.cave,
+                    &rock,
+                    drop_r as usize,
+                    drop_c as usize,
+                    (i % (COLORS.len() - 1) + 1) as u8,
+                );
                 state.top = max(state.top, drop_r as usize + rock.rows);
 
                 // println!("[{i}] Placed:\n{}", fmt_cave(&state.cave));
                 break;
             } else {
                 drop_r -= 1;
-
             }
         }
         // println!("{}", fmt_cave(&cave));
     }
 }
 
+fn hash_crown_occupancy(state: &State, rows: usize) -> usize {
+    let start_row = state.top - rows;
+    let start_idx = start_row * state.cave.cols;
+    let end_idx = state.top * state.cave.cols;
 
+    let mut hash: usize = 432086524387577;
+    for d in &state.cave.data[start_idx..end_idx] {
+        if *d > 0 {
+            hash = hash.overflowing_mul(8274393).0;
+            hash = hash.overflowing_add(91751).0;
+        } else {
+            hash = hash.overflowing_mul(22971).0;
+            hash = hash.overflowing_add(99377).0;
+        }
+    }
+    hash
+}
 
 pub fn day17(test_mode: bool, print: bool) {
     let file_str = std::fs::read_to_string(format!("inputs/input{:02}.txt", DAY)).unwrap();
@@ -184,79 +201,96 @@ pub fn day17(test_mode: bool, print: bool) {
     }
     assert_eq!(part1, if test_mode { 3068 } else { 3206 });
 
-    // In part 2, we drop the repeated part, then figure out how it fits together.
-    let mut state_repeated = State::new();
+    // In part 2, we look for a repeated section, and then simulate the looping.
+
+    // Really we should search for a full blockage, but probably this value is big enough.
+    const ASSUME_TRIMMABLE: usize = 50;
+
+    // fn trim_to_top(state: &mut State, rows: usize) {
+    //     let discard_rows = state.top - rows;
+
+    //     println!(
+    //         "Discarding {} with rows {} and top {}",
+    //         discard_rows, state.cave.rows, state.top
+    //     );
+    //     state.cave.data = state.cave.data
+    //         [(discard_rows * state.cave.cols)..(state.top * state.cave.cols)]
+    //         .to_vec();
+    //     state.top -= discard_rows;
+    //     state.cave.rows = rows;
+    //     // Dequeue would speed this up.
+    // }
+
+    struct Breadcrumb {
+        iters: usize,
+        top: usize,
+    }
+    let mut breadcrumbs =
+        FxHashMap::<usize, Breadcrumb>::with_capacity_and_hasher(32, Default::default());
+
+    // Looks for where the repititions begin.
+    let mut iter_count = 0;
+    let mut state = State::new();
+    let mut loop_iter_increase = 0;
+    let mut loop_top_increase = 0;
+    for _k in 0..1000 {
+        // println!("Looking for loop {}", k);
+
+        drop_rocks(&mut state, looping_after, &mut rock_iter, &mut blow_iter);
+        iter_count += looping_after;
+
+        let crown_hash = hash_crown_occupancy(&state, ASSUME_TRIMMABLE);
+        if let Some(seen) = breadcrumbs.get(&crown_hash) {
+            loop_iter_increase = iter_count - seen.iters;
+            loop_top_increase = state.top - seen.top;
+            break;
+        }
+
+        breadcrumbs.insert(
+            crown_hash,
+            Breadcrumb {
+                iters: iter_count,
+                top: state.top,
+            },
+        );
+    }
+
+    println!(
+        "Found loop, with d-iters = {}, d-top = {}",
+        loop_iter_increase, loop_top_increase
+    );
+
+    const ITERATIONS: usize = 1_000_000_000_000;
+
+    // Now we fake some repetitions
+    let mut fake_iter_increase = 0;
+    let mut fake_top_increase = 0;
+    while iter_count + fake_iter_increase + loop_iter_increase < ITERATIONS {
+        fake_iter_increase += loop_iter_increase;
+        fake_top_increase += loop_top_increase;
+    }
+
+    // And then do any extra iterations
+    let left_iterations = ITERATIONS - (iter_count + fake_iter_increase);
     drop_rocks(
-        &mut state_repeated,
-        looping_after,
+        &mut state,
+        left_iterations,
         &mut rock_iter.clone(),
         &mut blow_iter.clone(),
     );
-    println!("Looping part is {} high. Approx full height = {}", state_repeated.top, state_repeated.top * (1000000000000 / looping_after));
 
-    let mut state = State::new();
-
-    // Really we should search for a full blockage, but probably this value is big enough.
-    const ASSUME_TRIMMABLE: usize = 100;
-
-    fn clone_rows(grid: &Grid<u8>, start: usize, end: usize) -> Grid<u8> {
-        Grid{
-            rows: end - start,
-            cols: grid.cols,
-            data: grid.data[(start * grid.cols)..(end * grid.cols)].to_vec()}
+    let part2 = state.top + fake_top_increase;
+    if print {
+        println!("Day {}.  Part 2: {}", DAY, part2);
     }
-
-    fn hash_occupancy(grid: &Grid<u8>) -> usize {
-        let mut hash: usize = 432086524387577;
-        for d in &grid.data {
-            if *d > 0 {
-                hash = hash.overflowing_mul(8274393).0;
-                hash = hash.overflowing_add(91832751).0;
-            } else {
-                hash = hash.overflowing_mul(22971).0;
-                hash = hash.overflowing_add(993777).0;
-            }
+    assert_eq!(
+        part2,
+        if test_mode {
+            1514285714288
+        } else {
+            1602881844347
         }
-        hash
-    }
-
-    struct Effect {
-        crown_after: Grid<u8>,
-        crown_hash_after: usize,
-    }
-    let mut successor = FxHashMap::<usize, Effect>::with_capacity_and_hasher(128, Default::default());
-
-    let mut last_crown_hash = 0;
-    for k in 0..1000 {
-        let last_top = state.top;
-        drop_rocks(&mut state, looping_after, &mut rock_iter, &mut blow_iter);
-
-        if successor.contains_key(&last_crown_hash) {
-            println!("LOOPING!!!!! after {k}");
-            return;
-        }
-
-        println!("Round {k}, increased by {}:\n{}", state.top - last_top, fmt_cave(&state.cave));
-
-        let crown = clone_rows(&state.cave, state.top - ASSUME_TRIMMABLE, state.top);
-        let crown_hash = hash_occupancy(&crown);
-        println!("Crown is: {}\n{}", crown_hash, fmt_cave(&crown));
-        // println!("[{k}] increased by {}", state.top - last_top);
-        successor.insert(last_crown_hash, Effect{
-            crown_after: crown,
-            crown_hash_after: crown_hash,
-        });
-
-        last_crown_hash = crown_hash;
-    }
-
-    // println!("{}", fmt_cave(&state_repeated.cave));
-
-    // let part2 = best_sofar;
-    // if print {
-    //     println!("Day {}.  Part 2: {}", DAY, part2);
-    // }
-    // assert_eq!(part2, if test_mode { 99 } else { 99 });
+    );
 }
 
 const TEST_EXAMPLE: &'static str = ">>><<><>><<<>><>>><<<>>><<<><<<>><>><<>>";
