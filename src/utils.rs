@@ -226,7 +226,49 @@ pub fn tabulate(table: &Grid<String>) -> String {
     out
 }
 
-// Ordering by the first element of a tuple (in reverse)
+// Ordering by the first element of a tuple
+#[repr(transparent)]
+#[derive(Debug)]
+pub struct ByFirst<T>(pub T);
+
+impl<A: PartialEq, B> PartialEq for ByFirst<(A, B)> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.0 == other.0.0
+    }
+}
+impl<A: Eq, B> Eq for ByFirst<(A, B)> {}
+
+impl<A: PartialOrd, B> PartialOrd for ByFirst<(A, B)> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.0.0.partial_cmp(&other.0.0)
+    }
+}
+
+impl<A: Ord, B> Ord for ByFirst<(A, B)> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.0.cmp(&other.0.0)
+    }
+}
+
+impl<A: PartialEq, B, C> PartialEq for ByFirst<(A, B, C)> {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.0 == other.0.0
+    }
+}
+impl<A: Eq, B, C> Eq for ByFirst<(A, B, C)> {}
+
+impl<A: PartialOrd, B, C> PartialOrd for ByFirst<(A, B, C)> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.0.0.partial_cmp(&other.0.0)
+    }
+}
+
+impl<A: Ord, B, C> Ord for ByFirst<(A, B, C)> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.0.0.cmp(&other.0.0)
+    }
+}
+
 #[repr(transparent)]
 #[derive(Debug)]
 pub struct ByFirstRev<T>(pub T);
