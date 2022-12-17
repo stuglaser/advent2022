@@ -1,4 +1,4 @@
-use std::{cmp::max, collections::BinaryHeap};
+use std::collections::BinaryHeap;
 
 use itertools::Itertools;
 use rustc_hash::{FxHashMap, FxHashSet};
@@ -14,55 +14,62 @@ struct Room {
     tunnels: Vec<String>,
 }
 
-fn best_released<'a>(
-    rooms: &'a FxHashMap<String, Room>,
-    released: &mut FxHashSet<&'a str>,
-    loc: &'a str,
-    sofar: i32,
+fn compute_optimistic_flow(
+    rooms: &FxHashMap<String, Room>,
+    remain: &FxHashSet<&String>,
     time_left: i32,
 ) -> i32 {
-    println!("At {loc} {time_left} | sofar: {sofar}");
-    if time_left == 0 {
-        return sofar;
-    }
+    let flows = remain
+        .iter()
+        .map(|r| rooms.get(*r).unwrap().flow)
+        .sorted()
+        .collect::<Vec<_>>();
 
-    let room = &rooms[loc];
-
-    let mut best = 0;
-
-    // No release
-    for n in &room.tunnels {
-        let released = best_released(rooms, released, n, sofar, time_left - 1);
-        best = max(best, released);
-    }
-
-    if time_left > 1 && !released.contains(loc) {
-        // Turn on valve
-        released.insert(loc);
-        let now_flow = sofar + (time_left - 1) * room.flow;
-        for n in &room.tunnels {
-            let released = best_released(rooms, released, n, now_flow, time_left - 2);
-            best = max(best, released);
-        }
-        released.remove(loc);
-    }
-    best
-}
-
-fn compute_theoretical_flow(rooms: &FxHashMap<String, Room>, dist: &FxHashMap<(String, String), i32>, remain: &FxHashSet<&String>, time_left: i32) -> i32 {
-    let flows = remain.iter().map(|r| rooms.get(*r).unwrap().flow).sorted().collect::<Vec<_>>();
-
-    let mut theoretical = 0;
+    let mut optimistic = 0;
     let mut time_left = time_left;
     for flow in flows.iter().rev() {
-        time_left -= 2;  // Move and turn on
+        time_left -= 2; // Move and turn on
         if time_left <= 0 {
             break;
         }
 
-        theoretical += time_left * flow;
+        optimistic += time_left * flow;
     }
-    theoretical
+    optimistic
+}
+
+// Gotta watch what the elephant does.
+fn compute_optimistic_flow_with_friend(
+    rooms: &FxHashMap<String, Room>,
+    remain: &FxHashSet<&String>,
+    a_time_left: i32,
+    b_time_left: i32,
+) -> i32 {
+    let flows = remain
+        .iter()
+        .map(|r| rooms.get(*r).unwrap().flow)
+        .sorted()
+        .collect::<Vec<_>>();
+
+    let mut optimistic = 0;
+    let mut a_time_left = a_time_left;
+    let mut b_time_left = b_time_left;
+    for flow in flows.iter().rev() {
+        if a_time_left <= 2 && b_time_left <= 2 {
+            break;
+        }
+
+        if a_time_left >= b_time_left {
+            // A turns it on
+            a_time_left -= 2;
+            optimistic += a_time_left * flow;
+        } else {
+            // B turns it on
+            b_time_left -= 2;
+            optimistic += b_time_left * flow;
+        }
+    }
+    optimistic
 }
 
 pub fn day16(test_mode: bool, print: bool) {
@@ -77,7 +84,6 @@ pub fn day16(test_mode: bool, print: bool) {
         regex::Regex::new(r"Valve ([^ ]+) has flow rate=(\d+); tunnels? leads? to valves? (.*)")
             .unwrap();
 
-    // let mut rooms = Vec::with_capacity(32);
     let mut rooms = FxHashMap::with_capacity_and_hasher(128, Default::default());
     for line in input_str.lines() {
         let caps = re.captures(line).unwrap();
@@ -95,10 +101,7 @@ pub fn day16(test_mode: bool, print: bool) {
     }
     let rooms = rooms;
 
-    println!("Rooms: {:?}", rooms);
-
-    // let mut released = FxHashSet::with_capacity_and_hasher(rooms.len(), Default::default());
-    // let part1 = best_released(&rooms, &mut released, "AA", 0, 30);
+    // println!("Rooms: {:?}", rooms);
 
     // All paths
     let mut dist = FxHashMap::<(String, String), i32>::with_capacity_and_hasher(
@@ -139,20 +142,8 @@ pub fn day16(test_mode: bool, print: bool) {
         .iter()
         .filter_map(|(s, r)| if r.flow > 0 { Some(s) } else { None })
         .collect::<FxHashSet<_>>();
-    println!("Matter: {:?}", matter);
+    // println!("Matter: {:?}", matter);
 
-    for a in &matter {
-        for b in &matter {
-            println!(
-                "{} -> {} = {}",
-                a,
-                b,
-                dist.get(&(a.to_string(), b.to_string())).unwrap()
-            );
-        }
-    }
-
-    let start = "AA";
 
     #[derive(Debug)]
     struct Remember<'a> {
@@ -162,7 +153,7 @@ pub fn day16(test_mode: bool, print: bool) {
         rooms_left: FxHashSet<&'a String>,
 
         followed: Vec<String>, // TODO: delete me
-    };
+    }
     let mut heap: BinaryHeap<ByFirst<(i32, Remember)>> = BinaryHeap::new();
     heap.push(ByFirst((
         i32::MAX,
@@ -175,40 +166,34 @@ pub fn day16(test_mode: bool, print: bool) {
         },
     )));
 
-    // let mut part1 = 0;
     let mut best_sofar = 0;
     loop {
-        let ByFirst((theoretical, at)) = heap.pop().unwrap();
-        println!("At: {} with {}, {:?}", at.room, theoretical, at);
+        let ByFirst((_theoretical, at)) = heap.pop().unwrap();
 
         let mut next_followed = at.followed.clone();
         next_followed.push(at.room.clone());
 
         if at.sofar > best_sofar {
             best_sofar = at.sofar;
-            println!("BEST: {}", best_sofar);
         }
 
         if at.rooms_left.is_empty() || at.time_left <= 2 {
-            println!("Guess we're done????");
-            // part1 = theoretical;
             break;
         }
 
-
         for next in &at.rooms_left {
-            println!("  Expand {}", next);
             let mut next_left = at.rooms_left.clone();
             next_left.remove(next);
 
-            let time_left_after_move = at.time_left - dist.get(&(at.room.clone(), (*next).clone())).unwrap();
+            let time_left_after_move =
+                at.time_left - dist.get(&(at.room.clone(), (*next).clone())).unwrap();
             if time_left_after_move > 2 {
                 let time_left_after_open = time_left_after_move - 1;
                 let next_sofar = at.sofar + time_left_after_open * rooms.get(*next).unwrap().flow;
 
-                let theoretical_flow = next_sofar + compute_theoretical_flow(&rooms, &dist, &next_left, time_left_after_open);
+                let theoretical_flow = next_sofar
+                    + compute_optimistic_flow(&rooms, &next_left, time_left_after_open);
 
-                println!("  --> {theoretical_flow} :: {next}, {time_left_after_open} left, {next_sofar} flow     remaining: {:?}", next_left);
                 heap.push(ByFirst((
                     theoretical_flow,
                     Remember {
@@ -217,22 +202,11 @@ pub fn day16(test_mode: bool, print: bool) {
                         sofar: next_sofar,
                         rooms_left: next_left,
                         followed: next_followed.clone(),
-                    }
+                    },
                 )));
             }
         }
-
     }
-
-    // let matter = matter.iter().map(|s| s.to_string()).collect::<Vec<_>>();
-
-    // let mut i = 0;
-    // for order in matter.iter().permutations(matter.len()) {
-    //     i += 1;
-    //     if i % 100_000 == 0 {
-    //         println!("Check {:?}", order);
-    //     }
-    // }
 
     let part1 = best_sofar;
     if print {
@@ -240,10 +214,132 @@ pub fn day16(test_mode: bool, print: bool) {
     }
     assert_eq!(part1, if test_mode { 1651 } else { 2330 });
 
-    // if print {
-    //     println!("Day {}.  Part 2: {}", DAY, part2);
-    // }
-    // assert_eq!(part2, if test_mode { 56000011 } else { 12274327017867 });
+    // Part 2, with an elephant
+
+    #[derive(Debug)]
+    struct Remember2<'a> {
+        me_at: String,
+        me_time_left: i32,
+
+        elph_at: String,
+        elph_time_left: i32,
+
+        sofar: i32, // Flow released so far.
+        rooms_left: FxHashSet<&'a String>,
+
+        me_followed: Vec<String>, // TODO: delete me
+        elph_followed: Vec<String>,
+    }
+
+    let mut heap: BinaryHeap<ByFirst<(i32, Remember2)>> = BinaryHeap::new();
+    heap.push(ByFirst((
+        i32::MAX,
+        Remember2 {
+            me_at: "AA".to_string(),
+            me_time_left: 26,
+            elph_at: "AA".to_string(),
+            elph_time_left: 26,
+            sofar: 0,
+            rooms_left: matter.clone(),
+            me_followed: Vec::new(),
+            elph_followed: Vec::new(),
+        },
+    )));
+
+    let mut best_sofar = 0;
+    loop {
+        let ByFirst((_theoretical, at)) = heap.pop().unwrap();
+
+        if at.sofar > best_sofar {
+            best_sofar = at.sofar;
+        }
+
+        if at.rooms_left.is_empty() || (at.me_time_left <= 2 && at.elph_time_left <= 2) {
+            break;
+        }
+
+        for next in &at.rooms_left {
+            let mut next_left = at.rooms_left.clone();
+            next_left.remove(next);
+
+            if at.me_time_left >= at.elph_time_left {
+                // I move
+                let mut followed = at.me_followed.clone();
+                followed.push((*next).clone());
+
+                let time_left_after_move =
+                    at.me_time_left - dist.get(&(at.me_at.clone(), (*next).clone())).unwrap();
+                if time_left_after_move > 2 {
+                    let time_left_after_open = time_left_after_move - 1;
+                    let next_sofar =
+                        at.sofar + time_left_after_open * rooms.get(*next).unwrap().flow;
+
+                    let theoretical_flow = next_sofar
+                        + compute_optimistic_flow_with_friend(
+                            &rooms,
+                            &next_left,
+                            time_left_after_open,
+                            at.elph_time_left,
+                        );
+
+                    heap.push(ByFirst((
+                        theoretical_flow,
+                        Remember2 {
+                            me_at: (*next).clone(),
+                            me_time_left: time_left_after_open,
+                            elph_at: at.elph_at.clone(),
+                            elph_time_left: at.elph_time_left,
+                            sofar: next_sofar,
+                            rooms_left: next_left,
+
+                            me_followed: followed,
+                            elph_followed: at.elph_followed.clone(),
+                        },
+                    )));
+                }
+            } else {
+                // Elephant moves
+                let mut followed = at.elph_followed.clone();
+                followed.push((*next).clone());
+
+                let time_left_after_move =
+                    at.elph_time_left - dist.get(&(at.elph_at.clone(), (*next).clone())).unwrap();
+                if time_left_after_move > 2 {
+                    let time_left_after_open = time_left_after_move - 1;
+                    let next_sofar =
+                        at.sofar + time_left_after_open * rooms.get(*next).unwrap().flow;
+
+                    let theoretical_flow = next_sofar
+                        + compute_optimistic_flow_with_friend(
+                            &rooms,
+                            &next_left,
+                            at.me_time_left,
+                            time_left_after_open,
+                        );
+
+                    heap.push(ByFirst((
+                        theoretical_flow,
+                        Remember2 {
+                            me_at: at.me_at.clone(),
+                            me_time_left: at.me_time_left,
+                            elph_at: (*next).clone(),
+                            elph_time_left: time_left_after_open,
+                            sofar: next_sofar,
+                            rooms_left: next_left,
+                            me_followed: at.me_followed.clone(),
+                            elph_followed: followed,
+                        },
+                    )));
+                }
+            }
+        }
+    }
+
+    let part2 = best_sofar;
+    if print {
+        println!("Day {}.  Part 2: {}", DAY, part2);
+    }
+    assert_eq!(part2, if test_mode { 1707 } else { 2675 });
 }
 
 const TEST_EXAMPLE: &'static str = "Valve AA has flow rate=0; tunnels lead to valves DD, II, BB
