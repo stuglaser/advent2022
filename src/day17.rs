@@ -53,6 +53,8 @@ struct State {
     // cave: Grid<u8>,
     cave: Vec<u16>,
     top: usize,
+    last_rock: usize,
+    last_blow: usize,
 }
 
 impl State {
@@ -61,6 +63,8 @@ impl State {
             // cave: Grid::filled(1, 7, 0),
             cave: vec![],
             top: 0,
+            last_rock: usize::MAX,
+            last_blow: usize::MAX,
         }
     }
 }
@@ -96,22 +100,24 @@ fn drop_rocks<'a, RockIt, BlowIt>(
     rock_iter: &mut RockIt,
     blow_iter: &mut BlowIt,
 ) where
-    RockIt: Iterator<Item = &'a Vec<u16>>, //Iterator<Item = &'a Grid<u8>>,
-    BlowIt: Iterator<Item = i8>,
+    RockIt: Iterator<Item = (usize, &'a Vec<u16>)>, //Iterator<Item = &'a Grid<u8>>,
+    BlowIt: Iterator<Item = (usize, i8)>,
 {
     state.cave.reserve(num_rocks * 3);
     for i in 0..num_rocks {
         let mut drop_c: i32 = 2;
         let mut drop_r: i32 = state.top as i32 + 3;
 
-        let rock = rock_iter.next().unwrap();
+        let (rock_id, rock) = rock_iter.next().unwrap();
+        state.last_rock = rock_id;
 
         // extend_rows_to(&mut state.cave, drop_r as usize + rock.rows, 0);
         state.cave.resize(drop_r as usize + rock.len(), WALLS);
 
         loop {
             // Sideways
-            let blow = blow_iter.next().unwrap();
+            let (blow_id, blow) = blow_iter.next().unwrap();
+            state.last_blow = blow_id;
             if !collides(&state.cave, &rock, drop_r, drop_c + blow as i32) {
                 drop_c += blow as i32;
             }
@@ -119,18 +125,8 @@ fn drop_rocks<'a, RockIt, BlowIt>(
             // Down
             if drop_r >= 0 && collides(&state.cave, &rock, drop_r - 1, drop_c) {
                 // Places the rock
-                // blit(&mut state.cave, &rock, drop_r as usize, drop_c as usize, 1);
-                blit(
-                    &mut state.cave,
-                    &rock,
-                    drop_r as usize,
-                    drop_c as usize,
-                );
-                // state.top = max(state.top, drop_r as usize + rock.rows);
+                blit(&mut state.cave, &rock, drop_r as usize, drop_c as usize);
                 state.top = max(state.top, drop_r as usize + rock.len());
-
-                // println!("[{i}] Placed at [{}, {}]:\n{}", drop_r, drop_c, fmt_cave(&state.cave));
-                // println!("[{i}] Placed:\n{}", fmt_cave(&state.cave));
                 break;
             } else {
                 drop_r -= 1;
@@ -141,11 +137,17 @@ fn drop_rocks<'a, RockIt, BlowIt>(
 }
 
 fn hash_crown_occupancy(state: &State, rows: usize) -> usize {
-    let start_row = state.top - rows;
+    let start_row = if rows < state.top {
+        state.top - rows
+    } else {
+        0
+    };
     let mut hash = DefaultHasher::new();
     for d in &state.cave[start_row..state.top] {
         d.hash(&mut hash);
     }
+    state.last_rock.hash(&mut hash);
+    state.last_blow.hash(&mut hash);
     hash.finish() as usize
 }
 
@@ -196,8 +198,9 @@ pub fn day17(test_mode: bool, print: bool) {
         .as_bytes()
         .iter()
         .map(|ch| if *ch == b'<' { -1i8 } else { 1 })
+        .enumerate()
         .cycle();
-    let mut rock_iter = brocks.iter().cycle();
+    let mut rock_iter = brocks.iter().enumerate().cycle();
 
     let mut state = State::new();
     drop_rocks(
@@ -229,16 +232,17 @@ pub fn day17(test_mode: bool, print: bool) {
     let mut breadcrumbs =
         FxHashMap::<usize, Breadcrumb>::with_capacity_and_hasher(32, Default::default());
 
+    // It's important to use the same rock_iter and blow_iter throughout.
+
     // Looks for where the repititions begin.
     let mut iter_count = 0;
     let mut state = State::new();
     let mut loop_iter_increase = 0;
     let mut loop_top_increase = 0;
-    for _k in 0..1000 {
-        // println!("Looking for loop {}", k);
 
-        drop_rocks(&mut state, looping_after, &mut rock_iter, &mut blow_iter);
-        iter_count += looping_after;
+    loop {
+        drop_rocks(&mut state, 1, &mut rock_iter, &mut blow_iter);
+        iter_count += 1;
 
         let crown_hash = hash_crown_occupancy(&state, ASSUME_TRIMMABLE);
         if let Some(seen) = breadcrumbs.get(&crown_hash) {
@@ -256,17 +260,17 @@ pub fn day17(test_mode: bool, print: bool) {
         );
     }
 
-    // println!("Found loop, with d-iters = {}, d-top = {}", loop_iter_increase, loop_top_increase);
+    // println!(
+    //     "Found loop at {} (top: {}), with d-iters = {}, d-top = {}",
+    //     iter_count, state.top, loop_iter_increase, loop_top_increase
+    // );
 
     const ITERATIONS: usize = 1_000_000_000_000;
 
     // Now we fake some repetitions
-    let mut fake_iter_increase = 0;
-    let mut fake_top_increase = 0;
-    while iter_count + fake_iter_increase + loop_iter_increase < ITERATIONS {
-        fake_iter_increase += loop_iter_increase;
-        fake_top_increase += loop_top_increase;
-    }
+    let num_cycles_to_fake = (ITERATIONS - iter_count) / loop_iter_increase;
+    let fake_iter_increase = num_cycles_to_fake * loop_iter_increase;
+    let fake_top_increase = num_cycles_to_fake * loop_top_increase;
 
     // And then do any extra iterations
     let left_iterations = ITERATIONS - (iter_count + fake_iter_increase);
