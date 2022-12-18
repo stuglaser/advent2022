@@ -1,4 +1,8 @@
-use std::cmp::max;
+use std::{
+    cmp::max,
+    collections::hash_map::DefaultHasher,
+    hash::{Hash, Hasher},
+};
 
 use rustc_hash::FxHashMap;
 
@@ -26,6 +30,8 @@ const ROCK_STRINGS: [&str; 5] = [
 "##
 ##"];
 
+const WALLS: u16 = 0b1_0000_0001;
+
 fn parse_rock(string: &str) -> Grid<u8> {
     let lines = string.lines().map(|s| s.as_bytes()).collect::<Vec<_>>();
     let width = lines[0].len();
@@ -42,59 +48,45 @@ fn parse_rock(string: &str) -> Grid<u8> {
     }
 }
 
-fn extend_rows_to(grid: &mut Grid<u8>, rows: usize, value: u8) {
-    grid.data.resize(rows * grid.cols, value);
-    grid.rows = rows;
-}
-
-const COLORS: [char; 6] = ['·', '#', '@', '▒', '◉', '▢'];
-// fn fmt_cave(cave: &Grid<u8>) -> String {
-//     let mut out = String::with_capacity(cave.rows * (cave.cols + 1));
-//     for r in (0..cave.rows).rev() {
-//         for c in 0..cave.cols {
-//             out.push(COLORS[cave[(r, c)] as usize]);
-//         }
-//         out.push('\n');
-//     }
-//     out
-// }
-
 #[derive(Clone)]
 struct State {
-    cave: Grid<u8>,
+    // cave: Grid<u8>,
+    cave: Vec<u16>,
     top: usize,
 }
 
 impl State {
     fn new() -> Self {
         Self {
-            cave: Grid::filled(1, 7, 0),
+            // cave: Grid::filled(1, 7, 0),
+            cave: vec![],
             top: 0,
         }
     }
 }
 
-fn collides(cave: &Grid<u8>, rock: &Grid<u8>, r: i32, c: i32) -> bool {
-    if r < 0 || c < 0 || c as usize + rock.cols > cave.cols {
+fn collides(cave: &Vec<u16>, rock: &Vec<u16>, r: i32, c: i32) -> bool {
+    if r < 0 {
         return true;
     }
-    for rock_r in 0..rock.rows {
-        for rock_c in 0..rock.cols {
-            if rock[(rock_r, rock_c)] > 0 && cave[(r as usize + rock_r, c as usize + rock_c)] > 0 {
-                return true;
-            }
+
+    let offset = 1 + c;
+
+    for rock_r in 0..rock.len() {
+        let cave_r = r as usize + rock_r;
+        if (rock[rock_r] << offset) & cave[cave_r] > 0 {
+            return true;
         }
     }
+
     false
 }
 
-fn blit(cave: &mut Grid<u8>, rock: &Grid<u8>, r: usize, c: usize, val: u8) {
-    for rock_r in 0..rock.rows {
-        for rock_c in 0..rock.cols {
-            if rock[(rock_r, rock_c)] > 0 {
-                cave[(r as usize + rock_r, c as usize + rock_c)] = val;
-            }
-        }
+fn blit(cave: &mut Vec<u16>, rock: &Vec<u16>, r: usize, c: usize) {
+    let shift = 1 + c;
+    for rock_r in 0..rock.len() {
+        let cave_r = r + rock_r;
+        cave[cave_r] |= rock[rock_r] << shift;
     }
 }
 
@@ -104,17 +96,18 @@ fn drop_rocks<'a, RockIt, BlowIt>(
     rock_iter: &mut RockIt,
     blow_iter: &mut BlowIt,
 ) where
-    RockIt: Iterator<Item = &'a Grid<u8>>,
+    RockIt: Iterator<Item = &'a Vec<u16>>, //Iterator<Item = &'a Grid<u8>>,
     BlowIt: Iterator<Item = i8>,
 {
-    state.cave.data.reserve(7 * num_rocks * 3);
+    state.cave.reserve(num_rocks * 3);
     for i in 0..num_rocks {
         let mut drop_c: i32 = 2;
         let mut drop_r: i32 = state.top as i32 + 3;
 
         let rock = rock_iter.next().unwrap();
 
-        extend_rows_to(&mut state.cave, drop_r as usize + rock.rows, 0);
+        // extend_rows_to(&mut state.cave, drop_r as usize + rock.rows, 0);
+        state.cave.resize(drop_r as usize + rock.len(), WALLS);
 
         loop {
             // Sideways
@@ -132,10 +125,11 @@ fn drop_rocks<'a, RockIt, BlowIt>(
                     &rock,
                     drop_r as usize,
                     drop_c as usize,
-                    (i % (COLORS.len() - 1) + 1) as u8,
                 );
-                state.top = max(state.top, drop_r as usize + rock.rows);
+                // state.top = max(state.top, drop_r as usize + rock.rows);
+                state.top = max(state.top, drop_r as usize + rock.len());
 
+                // println!("[{i}] Placed at [{}, {}]:\n{}", drop_r, drop_c, fmt_cave(&state.cave));
                 // println!("[{i}] Placed:\n{}", fmt_cave(&state.cave));
                 break;
             } else {
@@ -148,20 +142,30 @@ fn drop_rocks<'a, RockIt, BlowIt>(
 
 fn hash_crown_occupancy(state: &State, rows: usize) -> usize {
     let start_row = state.top - rows;
-    let start_idx = start_row * state.cave.cols;
-    let end_idx = state.top * state.cave.cols;
-
-    let mut hash: usize = 432086524387577;
-    for d in &state.cave.data[start_idx..end_idx] {
-        if *d > 0 {
-            hash = hash.overflowing_mul(8274393).0;
-            hash = hash.overflowing_add(91751).0;
-        } else {
-            hash = hash.overflowing_mul(22971).0;
-            hash = hash.overflowing_add(99377).0;
-        }
+    let mut hash = DefaultHasher::new();
+    for d in &state.cave[start_row..state.top] {
+        d.hash(&mut hash);
     }
-    hash
+    hash.finish() as usize
+}
+
+fn fmt_cave(cave: &Vec<u16>) -> String {
+    let mut out = String::with_capacity(cave.len() * 10);
+
+    for row in cave.iter().rev() {
+        let mut val = *row;
+        for _ in 0..9 {
+            out.push(match val & 1 {
+                0 => '.',
+                1 => '#',
+                _ => unreachable!(),
+            });
+            val = val >> 1;
+        }
+        out.push('\n');
+    }
+
+    out
 }
 
 pub fn day17(test_mode: bool, print: bool) {
@@ -174,14 +178,26 @@ pub fn day17(test_mode: bool, print: bool) {
 
     let looping_after = input_str.len() * ROCK_STRINGS.len();
 
-    let rocks = ROCK_STRINGS.map(|string| parse_rock(string));
+    // let rocks = ROCK_STRINGS.map(|string| parse_rock(string));
+
+    // LSB is leftwards, and rock[0] is the bottom, so these
+    // look backwards and upside down.
+    //
+    // Got a little to lazy to parse these.
+    let brocks = [
+        vec![0b1111],
+        vec![0b010, 0b111, 0b010],
+        vec![0b111, 0b100, 0b100], // vec![0b001, 0b001, 0b111],
+        vec![0b1, 0b1, 0b1, 0b1],
+        vec![0b11, 0b11],
+    ];
 
     let mut blow_iter = input_str
         .as_bytes()
         .iter()
         .map(|ch| if *ch == b'<' { -1i8 } else { 1 })
         .cycle();
-    let mut rock_iter = rocks.iter().cycle();
+    let mut rock_iter = brocks.iter().cycle();
 
     let mut state = State::new();
     drop_rocks(
@@ -205,21 +221,6 @@ pub fn day17(test_mode: bool, print: bool) {
 
     // Really we should search for a full blockage, but probably this value is big enough.
     const ASSUME_TRIMMABLE: usize = 50;
-
-    // fn trim_to_top(state: &mut State, rows: usize) {
-    //     let discard_rows = state.top - rows;
-
-    //     println!(
-    //         "Discarding {} with rows {} and top {}",
-    //         discard_rows, state.cave.rows, state.top
-    //     );
-    //     state.cave.data = state.cave.data
-    //         [(discard_rows * state.cave.cols)..(state.top * state.cave.cols)]
-    //         .to_vec();
-    //     state.top -= discard_rows;
-    //     state.cave.rows = rows;
-    //     // Dequeue would speed this up.
-    // }
 
     struct Breadcrumb {
         iters: usize,
@@ -255,10 +256,7 @@ pub fn day17(test_mode: bool, print: bool) {
         );
     }
 
-    println!(
-        "Found loop, with d-iters = {}, d-top = {}",
-        loop_iter_increase, loop_top_increase
-    );
+    // println!("Found loop, with d-iters = {}, d-top = {}", loop_iter_increase, loop_top_increase);
 
     const ITERATIONS: usize = 1_000_000_000_000;
 
