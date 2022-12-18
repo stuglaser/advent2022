@@ -83,6 +83,10 @@ impl Pt3 {
         (self.y - p.y).abs() +
         (self.z - p.z).abs()
     }
+
+    pub fn plus_coords(&self, x: i32, y: i32, z: i32) -> Self {
+        Self{x: self.x + x, y: self.y + y, z: self.z + z}
+    }
 }
 
 impl std::fmt::Display for Pt3 {
